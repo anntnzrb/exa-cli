@@ -5,13 +5,14 @@ import { DeepResearchRequest, DeepResearchStartResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { DeepResearchStartArgs } from "./toolArgs.js";
 
 export const deepResearchStartSchema = {
-  instructions: z.string().describe("Complex research question or detailed instructions for the AI researcher. Be specific about what you want to research and any particular aspects you want covered."),
+  instructions: z.string().describe("Complex research question or detailed instructions for the AI researcher. Be specific about what you want to research and specific aspects you want covered."),
   model: z.enum(['exa-research', 'exa-research-pro']).optional().describe("Research model: 'exa-research' (faster, 15-45s, good for most queries) or 'exa-research-pro' (more comprehensive, 45s-2min, for complex topics). Default: exa-research")
 };
 
-export const createDeepResearchStartTool = (config?: ToolConfig): ToolDefinition => ({
+export const createDeepResearchStartTool = (config?: ToolConfig): ToolDefinition<DeepResearchStartArgs> => ({
   id: "deep_researcher_start",
   description: "Start a comprehensive AI-powered deep research task for complex queries. This tool initiates an intelligent agent that performs extensive web searches, crawls relevant pages, analyzes information, and synthesizes findings into a detailed research report. The agent thinks critically about the research topic and provides thorough, well-sourced answers. Use this for complex research questions that require in-depth analysis rather than simple searches. After starting a research task, IMMEDIATELY use deep_researcher_check with the returned task ID to monitor progress and retrieve results.",
   schema: deepResearchStartSchema,
@@ -28,7 +29,7 @@ export const createDeepResearchStartTool = (config?: ToolConfig): ToolDefinition
         headers: {
           'accept': 'application/json',
           'content-type': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'deep-research-mcp'
         },
         timeout: 25000

@@ -4,9 +4,16 @@ CLI for Exa web search, research, crawling, and code context tools.
 
 ## Install
 
+```bash
+bun install -g exa-mcp-server
+# Or for local dev
+bun install
+```
+
 ## Usage
 
 ```bash
+bun run build:cli
 exa-cli --list-tools
 exa-cli web_search_exa --input '{"query":"latest ai news"}'
 exa-cli get_code_context_exa --input '{"query":"React useState hook examples","tokensNum":5000}'

@@ -75,7 +75,7 @@ export interface DeepResearchStartResponse {
   id: string;
   outputSchema?: {
     type: string;
-    properties: any;
+    properties: Record<string, unknown>;
     required: string[];
     additionalProperties: boolean;
   };
@@ -88,13 +88,13 @@ export interface DeepResearchCheckResponse {
   instructions: string;
   schema?: {
     type: string;
-    properties: any;
+    properties: Record<string, unknown>;
     required: string[];
     additionalProperties: boolean;
   };
   data?: {
     report?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   operations?: Array<{
     type: string;
@@ -102,10 +102,10 @@ export interface DeepResearchCheckResponse {
     text?: string;
     query?: string;
     goal?: string;
-    results?: any[];
+    results?: unknown[];
     url?: string;
     thought?: string;
-    data?: any;
+    data?: unknown;
   }>;
   citations?: {
     [key: string]: Array<{
@@ -134,7 +134,7 @@ export interface DeepResearchErrorResponse {
     statusCode: number;
   };
   status: number;
-  options: any;
+  options: Record<string, unknown>;
   message: string;
   name: string;
 }
@@ -163,5 +163,5 @@ export interface ExaCodeResponse {
   costDollars: string;
   searchTime: number;
   outputTokens?: number;
-  traces?: any;
+  traces?: Record<string, unknown>;
 }

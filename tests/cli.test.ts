@@ -1,10 +1,5 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
-import { PassThrough } from "stream";
-import { mkdtemp, rm, writeFile } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { fileURLToPath } from "url";
 
 const handler = vi.fn(async (args: { query: string }) => ({
   content: [{ type: "text" as const, text: `ok:${args.query}` }]
@@ -24,20 +19,73 @@ vi.mock("../src/tools/registry.js", () => {
   };
 });
 
-const { runCli } = await import("../src/cli.js");
+let runCli: typeof import("../src/cli.js").runCli;
+let originalBun: typeof Bun | undefined;
+
+beforeAll(async () => {
+  originalBun = (globalThis as { Bun?: typeof Bun }).Bun;
+  if (!originalBun) {
+    (globalThis as { Bun?: typeof Bun }).Bun = {
+      env: {},
+      argv: ["bun"],
+      stdin: { size: Number.POSITIVE_INFINITY, text: async () => "" },
+      stdout: {},
+      stderr: {},
+      write: () => 0,
+      exit: () => {},
+      file: () => ({
+        text: async () => ""
+      })
+    } as typeof Bun;
+  }
+  runCli = (await import("../src/cli.js")).runCli;
+});
+
+afterAll(() => {
+  if (originalBun) {
+    (globalThis as { Bun?: typeof Bun }).Bun = originalBun;
+  } else {
+    delete (globalThis as { Bun?: typeof Bun }).Bun;
+  }
+});
 
 const makeIo = () => {
-  const stdout = new PassThrough();
-  const stderr = new PassThrough();
   let out = "";
   let err = "";
-  stdout.on("data", chunk => {
-    out += chunk.toString();
-  });
-  stderr.on("data", chunk => {
-    err += chunk.toString();
-  });
-  return { stdout, stderr, out: () => out, err: () => err };
+  return {
+    stdout: {
+      write: (chunk: string) => {
+        out += chunk;
+      }
+    },
+    stderr: {
+      write: (chunk: string) => {
+        err += chunk;
+      }
+    },
+    out: () => out,
+    err: () => err
+  };
+};
+
+const makeEventInput = (data: string, includeTty: boolean) => {
+  const handlers: {
+    data?: (chunk?: string) => void;
+    end?: () => void;
+    error?: (error: unknown) => void;
+  } = {};
+  const stdin = {
+    ...(includeTty ? { isTTY: false } : {}),
+    setEncoding: () => {},
+    on: (event: "data" | "end" | "error", cb: (chunk?: string) => void) => {
+      handlers[event] = cb;
+    }
+  };
+  const emit = () => {
+    handlers.data?.(data);
+    handlers.end?.();
+  };
+  return { stdin, emit };
 };
 
 describe("cli", () => {
@@ -48,7 +96,7 @@ describe("cli", () => {
   it("prints help", async () => {
     const io = makeIo();
     const code = await runCli(["--help"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -59,7 +107,7 @@ describe("cli", () => {
   it("skips empty argv entries", async () => {
     const io = makeIo();
     const code = await runCli(["", "--help"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -70,7 +118,7 @@ describe("cli", () => {
   it("lists tools", async () => {
     const io = makeIo();
     const code = await runCli(["--list-tools"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -82,7 +130,7 @@ describe("cli", () => {
   it("errors on missing tool", async () => {
     const io = makeIo();
     const code = await runCli([], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -93,7 +141,7 @@ describe("cli", () => {
   it("errors on unknown tool", async () => {
     const io = makeIo();
     const code = await runCli(["nope", "--input", "{}"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -105,7 +153,7 @@ describe("cli", () => {
   it("accepts api key flag", async () => {
     const io = makeIo();
     const code = await runCli(["dummy", "--api-key", "k", "--input", "{\"query\":\"x\"}"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -116,7 +164,7 @@ describe("cli", () => {
   it("ignores extra positional args", async () => {
     const io = makeIo();
     const code = await runCli(["dummy", "extra", "--input", "{\"query\":\"x\"}"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -126,10 +174,8 @@ describe("cli", () => {
 
   it("errors on missing input", async () => {
     const io = makeIo();
-    const stdin = new PassThrough();
-    (stdin as NodeJS.ReadStream).isTTY = true;
     const code = await runCli(["dummy"], {
-      stdin,
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -140,45 +186,118 @@ describe("cli", () => {
 
   it("reads input from stdin", async () => {
     const io = makeIo();
-    const stdin = new PassThrough();
-    (stdin as NodeJS.ReadStream).isTTY = false;
+    const { stdin, emit } = makeEventInput(JSON.stringify({ query: "stdin" }), true);
     const promise = runCli(["dummy"], {
       stdin,
       stdout: io.stdout,
       stderr: io.stderr
     });
-    stdin.write(JSON.stringify({ query: "stdin" }));
-    stdin.end();
+    emit();
     const code = await promise;
     expect(code).toBe(0);
     expect(io.out()).toContain("ok:stdin");
   });
 
+  it("reads input from stdin via text()", async () => {
+    const io = makeIo();
+    const code = await runCli(["dummy"], {
+      stdin: {
+        isTTY: false,
+        text: async () => "{\"query\":\"stdin-text\"}"
+      },
+      stdout: io.stdout,
+      stderr: io.stderr
+    });
+    expect(code).toBe(0);
+    expect(io.out()).toContain("ok:stdin-text");
+  });
+
+  it("reads input from stdin via stream()", async () => {
+    const io = makeIo();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{\"query\":\"stdin-stream\"}"));
+        controller.close();
+      }
+    });
+    const code = await runCli(["dummy"], {
+      stdin: {
+        isTTY: false,
+        stream: () => stream
+      },
+      stdout: io.stdout,
+      stderr: io.stderr
+    });
+    expect(code).toBe(0);
+    expect(io.out()).toContain("ok:stdin-stream");
+  });
+
+  it("handles stdin with no readable hooks", async () => {
+    const io = makeIo();
+    const code = await runCli(["dummy"], {
+      stdin: { isTTY: false },
+      stdout: io.stdout,
+      stderr: io.stderr
+    });
+    expect(code).toBe(1);
+    expect(io.out()).toContain("Missing --input");
+  });
+
+  it("handles undefined chunks from stdin events", async () => {
+    const io = makeIo();
+    const stdin = {
+      isTTY: false,
+      on: (event: "data" | "end" | "error", cb: (chunk?: string) => void) => {
+        if (event === "data") cb(undefined);
+        if (event === "end") cb();
+      }
+    };
+    const code = await runCli(["dummy"], {
+      stdin,
+      stdout: io.stdout,
+      stderr: io.stderr
+    });
+    expect(code).toBe(1);
+    expect(io.out()).toContain("Missing --input");
+  });
+
   it("reads input from stdin without isTTY", async () => {
     const io = makeIo();
-    const stdin = new PassThrough();
+    const { stdin, emit } = makeEventInput(JSON.stringify({ query: "nostty" }), false);
     const promise = runCli(["dummy"], {
       stdin,
       stdout: io.stdout,
       stderr: io.stderr
     });
-    stdin.write(JSON.stringify({ query: "nostty" }));
-    stdin.end();
+    emit();
     const code = await promise;
     expect(code).toBe(0);
     expect(io.out()).toContain("ok:nostty");
   });
 
+  it("reads input from stdin when size is finite", async () => {
+    const io = makeIo();
+    const code = await runCli(["dummy"], {
+      stdin: {
+        size: 3,
+        text: async () => "{\"query\":\"size\"}"
+      },
+      stdout: io.stdout,
+      stderr: io.stderr
+    });
+    expect(code).toBe(0);
+    expect(io.out()).toContain("ok:size");
+  });
+
   it("handles empty stdin", async () => {
     const io = makeIo();
-    const stdin = new PassThrough();
-    (stdin as NodeJS.ReadStream).isTTY = false;
+    const { stdin, emit } = makeEventInput("", true);
     const promise = runCli(["dummy"], {
       stdin,
       stdout: io.stdout,
       stderr: io.stderr
     });
-    stdin.end();
+    emit();
     const code = await promise;
     expect(code).toBe(1);
     const parsed = JSON.parse(io.out());
@@ -187,30 +306,36 @@ describe("cli", () => {
 
   it("reads input from --input-file", async () => {
     const io = makeIo();
-    const dir = await mkdtemp(join(tmpdir(), "exa-cli-"));
-    const file = join(dir, "input.json");
-    await writeFile(file, JSON.stringify({ query: "file" }), "utf8");
-    const code = await runCli(["dummy", "--input-file", file], {
-      stdin: new PassThrough(),
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalFile = bunGlobal.file;
+    const filePath = "/tmp/exa-cli-input.json";
+    bunGlobal.file = (path: string) => ({
+      text: async () => (path === filePath ? JSON.stringify({ query: "file" }) : "")
+    });
+    const code = await runCli(["dummy", "--input-file", filePath], {
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
-    await rm(dir, { recursive: true, force: true });
+    bunGlobal.file = originalFile;
     expect(code).toBe(0);
     expect(io.out()).toContain("ok:file");
   });
 
   it("reads input from @file", async () => {
     const io = makeIo();
-    const dir = await mkdtemp(join(tmpdir(), "exa-cli-"));
-    const file = join(dir, "input.json");
-    await writeFile(file, JSON.stringify({ query: "atfile" }), "utf8");
-    const code = await runCli(["dummy", "--input", `@${file}`], {
-      stdin: new PassThrough(),
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalFile = bunGlobal.file;
+    const filePath = "/tmp/exa-cli-input-at.json";
+    bunGlobal.file = (path: string) => ({
+      text: async () => (path === filePath ? JSON.stringify({ query: "atfile" }) : "")
+    });
+    const code = await runCli(["dummy", "--input", `@${filePath}`], {
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
-    await rm(dir, { recursive: true, force: true });
+    bunGlobal.file = originalFile;
     expect(code).toBe(0);
     expect(io.out()).toContain("ok:atfile");
   });
@@ -218,7 +343,7 @@ describe("cli", () => {
   it("handles invalid JSON", async () => {
     const io = makeIo();
     const code = await runCli(["dummy", "--input", "{oops"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -230,7 +355,7 @@ describe("cli", () => {
   it("handles schema errors", async () => {
     const io = makeIo();
     const code = await runCli(["dummy", "--input", "{}"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -245,7 +370,7 @@ describe("cli", () => {
     });
     const io = makeIo();
     const code = await runCli(["dummy", "--input", "{\"query\":\"x\"}"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -261,7 +386,7 @@ describe("cli", () => {
     });
     const io = makeIo();
     const code = await runCli(["dummy", "--input", "{\"query\":\"x\"}", "--pretty"], {
-      stdin: new PassThrough(),
+      stdin: { isTTY: true },
       stdout: io.stdout,
       stderr: io.stderr
     });
@@ -269,89 +394,134 @@ describe("cli", () => {
     expect(io.out()).toContain("\n");
   });
 
+  it("uses default IO when not provided", async () => {
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalWrite = bunGlobal.write;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const writeSpy = vi.fn(() => 0);
+    bunGlobal.write = writeSpy;
+    bunGlobal.argv = ["bun"];
+    const code = await runCli();
+    expect(code).toBe(1);
+    expect(writeSpy).toHaveBeenCalled();
+    bunGlobal.write = originalWrite;
+    bunGlobal.argv = originalArgv;
+  });
+
   it("runs entrypoint when invoked directly", async () => {
-    const originalArgv = [...process.argv];
-    const originalExitCode = process.exitCode;
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const cliPath = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    process.argv = ["node", cliPath, "--help"];
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const writeSpy = vi.fn(() => 0);
+    const originalWrite = bunGlobal.write;
+    bunGlobal.write = writeSpy;
+    const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = true;
+    (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__ = true;
+    bunGlobal.argv = ["bun", cliPath, "--help"];
     vi.resetModules();
     await import("../src/cli.js");
     await new Promise(resolve => setImmediate(resolve));
-    expect(stdoutSpy).toHaveBeenCalled();
-    process.argv = originalArgv;
-    process.exitCode = originalExitCode;
-    stdoutSpy.mockRestore();
-    stderrSpy.mockRestore();
+    expect(writeSpy).toHaveBeenCalled();
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
+    delete (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__;
+    delete (globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__;
+    bunGlobal.argv = originalArgv;
+    bunGlobal.write = originalWrite;
   });
 
   it("skips entrypoint when argv[1] is missing", async () => {
-    const originalArgv = [...process.argv];
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    process.argv = ["node"];
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const writeSpy = vi.fn(() => 0);
+    const originalWrite = bunGlobal.write;
+    bunGlobal.write = writeSpy;
+    bunGlobal.argv = ["bun"];
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = false;
     vi.resetModules();
     await import("../src/cli.js");
     await new Promise(resolve => setImmediate(resolve));
-    expect(stdoutSpy).not.toHaveBeenCalled();
-    process.argv = originalArgv;
-    stdoutSpy.mockRestore();
+    expect(writeSpy).not.toHaveBeenCalled();
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
+    bunGlobal.argv = originalArgv;
+    bunGlobal.write = originalWrite;
   });
 
   it("sets exitCode on entrypoint errors", async () => {
-    const originalArgv = [...process.argv];
-    const originalExitCode = process.exitCode;
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const cliPath = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    process.argv = ["node", cliPath, "nope", "--input", "{}"];
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = true;
+    (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__ = true;
+    bunGlobal.argv = ["bun", cliPath, "nope", "--input", "{}"];
     vi.resetModules();
     await import("../src/cli.js");
     await new Promise(resolve => setImmediate(resolve));
-    expect(process.exitCode).toBe(1);
-    process.argv = originalArgv;
-    process.exitCode = originalExitCode;
-    stdoutSpy.mockRestore();
-    stderrSpy.mockRestore();
+    expect((globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__).toBe(1);
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
+    delete (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__;
+    delete (globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__;
+    bunGlobal.argv = originalArgv;
   });
 
   it("handles entrypoint exceptions", async () => {
-    const originalArgv = [...process.argv];
-    const originalExitCode = process.exitCode;
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const cliPath = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    process.argv = ["node", cliPath, "dummy", "--input", "@/nope.json"];
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+    const originalFile = bunGlobal.file;
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = true;
+    (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__ = true;
+    bunGlobal.argv = ["bun", cliPath, "dummy", "--input", "@/nope.json"];
+    bunGlobal.file = () => {
+      throw new Error("missing");
+    };
     vi.resetModules();
     await import("../src/cli.js");
     await new Promise(resolve => setTimeout(resolve, 10));
-    expect(process.exitCode).toBe(1);
-    process.argv = originalArgv;
-    process.exitCode = originalExitCode;
-    stdoutSpy.mockRestore();
-    stderrSpy.mockRestore();
+    expect((globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__).toBe(1);
+    bunGlobal.file = originalFile;
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
+    delete (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__;
+    delete (globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__;
+    bunGlobal.argv = originalArgv;
   });
 
   it("handles entrypoint non-error throws", async () => {
-    const originalArgv = [...process.argv];
-    const originalExitCode = process.exitCode;
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const cliPath = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
-    process.argv = ["node", cliPath, "dummy", "--input", "@/boom.json"];
-    vi.doMock("fs/promises", () => ({
-      readFile: () => {
-        throw "boom";
-      }
-    }));
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+    const originalFile = bunGlobal.file;
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = true;
+    (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__ = true;
+    bunGlobal.argv = ["bun", cliPath, "dummy", "--input", "@/boom.json"];
+    bunGlobal.file = () => {
+      throw "boom";
+    };
     vi.resetModules();
     await import("../src/cli.js");
     await new Promise(resolve => setTimeout(resolve, 10));
-    expect(process.exitCode).toBe(1);
-    vi.unmock("fs/promises");
-    process.argv = originalArgv;
-    process.exitCode = originalExitCode;
-    stdoutSpy.mockRestore();
-    stderrSpy.mockRestore();
+    expect((globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__).toBe(1);
+    bunGlobal.file = originalFile;
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
+    delete (globalThis as { __EXA_CLI_DISABLE_EXIT__?: boolean }).__EXA_CLI_DISABLE_EXIT__;
+    delete (globalThis as { __EXA_CLI_LAST_EXIT_CODE__?: number }).__EXA_CLI_LAST_EXIT_CODE__;
+    bunGlobal.argv = originalArgv;
+  });
+
+  it("calls Bun.exit when exit is not disabled", async () => {
+    const bunGlobal = (globalThis as { Bun?: typeof Bun }).Bun!;
+    const originalArgv = [...(bunGlobal.argv ?? [])];
+    const originalExit = bunGlobal.exit;
+    const cliPath = new URL("../src/cli.ts", import.meta.url).pathname;
+    const exitSpy = vi.fn();
+    bunGlobal.exit = exitSpy;
+    (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__ = true;
+    bunGlobal.argv = ["bun", cliPath, "nope", "--input", "{}"];
+    vi.resetModules();
+    await import("../src/cli.js");
+    await new Promise(resolve => setImmediate(resolve));
+    expect(exitSpy).toHaveBeenCalled();
+    bunGlobal.exit = originalExit;
+    bunGlobal.argv = originalArgv;
+    delete (globalThis as { __EXA_CLI_ENTRY__?: boolean }).__EXA_CLI_ENTRY__;
   });
 });

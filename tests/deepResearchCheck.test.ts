@@ -13,7 +13,7 @@ describe("deepResearchCheck tool", () => {
     vi.useRealTimers();
   });
 
-  const runWithResponse = async (data: any) => {
+  const runWithResponse = async (data: unknown) => {
     axiosMock.get.mockResolvedValue({ data });
     const tool = createDeepResearchCheckTool();
     const promise = tool.handler({ taskId: "task-1" });

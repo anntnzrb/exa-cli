@@ -5,13 +5,14 @@ import type { ExaCrawlRequest } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { CrawlingArgs } from "./toolArgs.js";
 
 export const crawlingSchema = {
   url: z.string().describe("URL to crawl and extract content from"),
   maxCharacters: z.number().optional().describe("Maximum characters to extract (default: 3000)")
 };
 
-export const createCrawlingTool = (config?: ToolConfig): ToolDefinition => ({
+export const createCrawlingTool = (config?: ToolConfig): ToolDefinition<CrawlingArgs> => ({
   id: "crawling_exa",
   description: "Extract and crawl content from specific URLs using Exa AI - retrieves full text content, metadata, and structured information from web pages. Ideal for extracting detailed content from known URLs.",
   schema: crawlingSchema,
@@ -28,7 +29,7 @@ export const createCrawlingTool = (config?: ToolConfig): ToolDefinition => ({
         headers: {
           'accept': 'application/json',
           'content-type': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'crawling-mcp'
         },
         timeout: 25000

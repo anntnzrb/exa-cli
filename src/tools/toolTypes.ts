@@ -14,13 +14,15 @@ export type ToolHints = {
   idempotentHint?: boolean;
 };
 
-export type ToolDefinition = {
+export type ToolDefinition<TArgs = unknown> = {
   id: string;
   description: string;
   schema: z.ZodRawShape;
   hints?: ToolHints;
-  handler: (args: any) => Promise<ToolResult>;
+  handler: (args: TArgs) => Promise<ToolResult>;
 };
+
+export type ToolDefinitionUnknown = ToolDefinition<unknown>;
 
 export type ToolConfig = {
   exaApiKey?: string;

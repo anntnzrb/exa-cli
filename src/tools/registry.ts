@@ -1,4 +1,4 @@
-import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { ToolConfig, ToolDefinition, ToolDefinitionUnknown } from "./toolTypes.js";
 import { createWebSearchTool } from "./webSearch.js";
 import { createDeepSearchTool } from "./deepSearch.js";
 import { createCompanyResearchTool } from "./companyResearch.js";
@@ -19,7 +19,7 @@ export const TOOL_IDS = [
   "get_code_context_exa"
 ] as const;
 
-export const createToolRegistry = (config?: ToolConfig): ToolDefinition[] => [
+export const createToolRegistry = (config?: ToolConfig): ToolDefinitionUnknown[] => [
   createWebSearchTool(config),
   createDeepSearchTool(config),
   createCompanyResearchTool(config),
@@ -28,9 +28,12 @@ export const createToolRegistry = (config?: ToolConfig): ToolDefinition[] => [
   createDeepResearchStartTool(config),
   createDeepResearchCheckTool(config),
   createExaCodeTool(config)
-];
+].map(tool => tool as ToolDefinitionUnknown);
 
-export const getToolDefinition = (toolId: string, config?: ToolConfig): ToolDefinition | undefined => {
+export const getToolDefinition = (
+  toolId: string,
+  config?: ToolConfig
+): ToolDefinitionUnknown | undefined => {
   const tools = createToolRegistry(config);
   return tools.find(tool => tool.id === toolId);
 };

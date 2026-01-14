@@ -5,6 +5,7 @@ import { DeepResearchCheckResponse, DeepResearchErrorResponse } from "../types.j
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { DeepResearchCheckArgs } from "./toolArgs.js";
 
 // Helper function to create a delay
 function delay(ms: number): Promise<void> {
@@ -15,7 +16,7 @@ export const deepResearchCheckSchema = {
   taskId: z.string().describe("The task ID returned from deep_researcher_start tool")
 };
 
-export const createDeepResearchCheckTool = (config?: ToolConfig): ToolDefinition => ({
+export const createDeepResearchCheckTool = (config?: ToolConfig): ToolDefinition<DeepResearchCheckArgs> => ({
   id: "deep_researcher_check",
   description: "Check the status and retrieve results of a deep research task. This tool monitors the progress of an AI agent that performs comprehensive web searches, analyzes multiple sources, and synthesizes findings into detailed research reports. The tool includes a built-in 5-second delay before checking to allow processing time. IMPORTANT: You must call this tool repeatedly (poll) until the status becomes 'completed' to get the final research results. When status is 'running', wait a few seconds and call this tool again with the same task ID.",
   schema: deepResearchCheckSchema,
@@ -36,7 +37,7 @@ export const createDeepResearchCheckTool = (config?: ToolConfig): ToolDefinition
         baseURL: API_CONFIG.BASE_URL,
         headers: {
           'accept': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'deep-research-mcp'
         },
         timeout: 25000

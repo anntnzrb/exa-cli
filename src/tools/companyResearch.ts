@@ -5,13 +5,14 @@ import { ExaSearchRequest, ExaSearchResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { CompanyResearchArgs } from "./toolArgs.js";
 
 export const companyResearchSchema = {
   companyName: z.string().describe("Name of the company to research"),
   numResults: z.number().optional().describe("Number of search results to return (default: 5)")
 };
 
-export const createCompanyResearchTool = (config?: ToolConfig): ToolDefinition => ({
+export const createCompanyResearchTool = (config?: ToolConfig): ToolDefinition<CompanyResearchArgs> => ({
   id: "company_research_exa",
   description: "Research companies using Exa AI - finds comprehensive information about businesses, organizations, and corporations. Provides insights into company operations, news, financial information, and industry analysis.",
   schema: companyResearchSchema,
@@ -28,7 +29,7 @@ export const createCompanyResearchTool = (config?: ToolConfig): ToolDefinition =
         headers: {
           'accept': 'application/json',
           'content-type': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'company-research-mcp'
         },
         timeout: 25000

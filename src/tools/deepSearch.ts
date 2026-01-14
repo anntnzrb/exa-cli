@@ -5,13 +5,14 @@ import { ExaSearchRequest, ExaSearchResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { DeepSearchArgs } from "./toolArgs.js";
 
 export const deepSearchSchema = {
   objective: z.string().describe("Natural language description of what the web search is looking for. Try to make the search query atomic - looking for a specific piece of information. May include guidance about preferred sources or freshness."),
   search_queries: z.array(z.string()).optional().describe("Optional list of keyword search queries, may include search operators. The search queries should be related to the user's objective. Limited to 5 entries of up to 5 words each (around 200 characters)."),
 };
 
-export const createDeepSearchTool = (config?: ToolConfig): ToolDefinition => ({
+export const createDeepSearchTool = (config?: ToolConfig): ToolDefinition<DeepSearchArgs> => ({
   id: "deep_search_exa",
   description: "Searches the web and return results in a natural language format.",
   schema: deepSearchSchema,
@@ -33,7 +34,7 @@ export const createDeepSearchTool = (config?: ToolConfig): ToolDefinition => ({
         headers: {
           'accept': 'application/json',
           'content-type': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'deep-search-mcp'
         },
         timeout: 25000

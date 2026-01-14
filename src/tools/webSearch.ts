@@ -5,6 +5,7 @@ import { ExaSearchRequest, ExaSearchResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
+import type { WebSearchArgs } from "./toolArgs.js";
 
 export const webSearchSchema = {
   query: z.string().describe("Websearch query"),
@@ -14,7 +15,7 @@ export const webSearchSchema = {
   contextMaxCharacters: z.number().optional().describe("Maximum characters for context string optimized for LLMs (default: 10000)")
 };
 
-export const createWebSearchTool = (config?: ToolConfig): ToolDefinition => ({
+export const createWebSearchTool = (config?: ToolConfig): ToolDefinition<WebSearchArgs> => ({
   id: "web_search_exa",
   description: "Search the web using Exa AI - performs real-time web searches and can scrape content from specific URLs. Supports configurable result counts and returns the content from the most relevant websites.",
   schema: webSearchSchema,
@@ -36,7 +37,7 @@ export const createWebSearchTool = (config?: ToolConfig): ToolDefinition => ({
         headers: {
           'accept': 'application/json',
           'content-type': 'application/json',
-          'x-api-key': config?.exaApiKey || process.env.EXA_API_KEY || '',
+          'x-api-key': config?.exaApiKey || Bun.env.EXA_API_KEY || '',
           'x-exa-integration': 'web-search-mcp'
         },
         timeout: 25000

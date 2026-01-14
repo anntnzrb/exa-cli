@@ -3,7 +3,7 @@ import { vi } from "vitest";
 const post = vi.fn();
 const get = vi.fn();
 const create = vi.fn(() => ({ post, get }));
-const isAxiosError = vi.fn((err: any) => Boolean(err?.isAxiosError));
+const isAxiosError = vi.fn((err: unknown) => Boolean((err as { isAxiosError?: boolean })?.isAxiosError));
 
 vi.mock("axios", () => ({
   default: {
