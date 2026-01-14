@@ -4,12 +4,6 @@ CLI for Exa web search, research, crawling, and code context tools.
 
 ## Install
 
-```bash
-npm install -g exa-mcp-server
-# Or for local dev
-npm install
-```
-
 ## Usage
 
 ```bash
