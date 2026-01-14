@@ -1,7 +1,7 @@
 // Exa API Types
 export interface ExaSearchRequest {
   query: string;
-  type: 'auto' | 'fast' | 'deep';
+  type: 'auto' | 'fast' | 'deep' | 'neural' | 'keyword';
   category?: string;
   includeDomains?: string[];
   excludeDomains?: string[];
@@ -27,7 +27,9 @@ export interface ExaSearchRequest {
 
 export interface ExaCrawlRequest {
   ids: string[];
-  text: boolean;
+  text?: {
+    maxCharacters?: number;
+  } | boolean;
   livecrawl?: 'always' | 'fallback' | 'preferred';
 }
 

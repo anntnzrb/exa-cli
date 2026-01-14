@@ -1,5 +1,5 @@
 /**
- * Simple logging utility for MCP server
+ * Simple logging utility for CLI tool
  */
 export const log = (message: string): void => {
   console.error(`[EXA-MCP-DEBUG] ${message}`);
