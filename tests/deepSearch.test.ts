@@ -44,6 +44,18 @@ describe("deepSearch tool", () => {
     expect(result.content[0].text).toContain("Deep search error (500): bad");
   });
 
+  it("handles axios errors with string response body", async () => {
+    axiosMock.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 500, data: "bad request" },
+      message: "fallback"
+    });
+    const tool = createDeepSearchTool();
+    const result = await tool.handler({ objective: "obj" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Deep search error (500): fallback");
+  });
+
   it("handles axios errors without response", async () => {
     axiosMock.post.mockRejectedValue({
       isAxiosError: true,

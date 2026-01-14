@@ -97,6 +97,13 @@ export const createDeepSearchTool = (config?: ToolConfig): ToolDefinition => ({
         // Handle Axios errors specifically
         const statusCode = error.response?.status || 'unknown';
         const errorMessage = error.response?.data?.message || error.message;
+        if (error.response?.data !== undefined) {
+          const responseBody =
+            typeof error.response.data === "string"
+              ? error.response.data
+              : JSON.stringify(error.response.data);
+          logger.log(`Response body: ${responseBody}`);
+        }
         
         logger.log(`Axios error (${statusCode}): ${errorMessage}`);
         return {

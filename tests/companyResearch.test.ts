@@ -35,6 +35,18 @@ describe("companyResearch tool", () => {
     expect(result.content[0].text).toContain("Company research error (500): bad");
   });
 
+  it("handles axios errors with string response body", async () => {
+    axiosMock.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 500, data: "bad request" },
+      message: "fallback"
+    });
+    const tool = createCompanyResearchTool();
+    const result = await tool.handler({ companyName: "Exa" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Company research error (500): fallback");
+  });
+
   it("handles axios errors without response", async () => {
     axiosMock.post.mockRejectedValue({
       isAxiosError: true,
