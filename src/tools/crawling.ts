@@ -3,6 +3,7 @@ import axios from "axios";
 import { API_CONFIG } from "./config.js";
 import type { ExaCrawlRequest } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
+import { getAxiosErrorInfo, logAxiosError } from "../utils/axiosError.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
 import type { CrawlingArgs } from "./toolArgs.js";
@@ -81,16 +82,13 @@ export const createCrawlingTool = (config?: ToolConfig): ToolDefinition<Crawling
     } catch (error) {
       logger.error(error);
       
-      if (axios.isAxiosError(error)) {
-        // Handle Axios errors specifically
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-        
-        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
+      const axiosInfo = getAxiosErrorInfo(error);
+      if (axiosInfo) {
+        logAxiosError(logger, axiosInfo);
         return {
           content: [{
             type: "text" as const,
-            text: `Crawling error (${statusCode}): ${errorMessage}`
+            text: `Crawling error (${axiosInfo.statusCode}): ${axiosInfo.message}`
           }],
           isError: true,
         };

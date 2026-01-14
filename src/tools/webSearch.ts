@@ -3,6 +3,7 @@ import axios from "axios";
 import { API_CONFIG } from "./config.js";
 import { ExaSearchRequest, ExaSearchResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
+import { getAxiosErrorInfo, logAxiosError } from "../utils/axiosError.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
 import type { WebSearchArgs } from "./toolArgs.js";
@@ -94,16 +95,13 @@ export const createWebSearchTool = (config?: ToolConfig): ToolDefinition<WebSear
     } catch (error) {
       logger.error(error);
       
-      if (axios.isAxiosError(error)) {
-        // Handle Axios errors specifically
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-        
-        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
+      const axiosInfo = getAxiosErrorInfo(error);
+      if (axiosInfo) {
+        logAxiosError(logger, axiosInfo);
         return {
           content: [{
             type: "text" as const,
-            text: `Search error (${statusCode}): ${errorMessage}`
+            text: `Search error (${axiosInfo.statusCode}): ${axiosInfo.message}`
           }],
           isError: true,
         };

@@ -22,8 +22,6 @@ export type ToolDefinition<TArgs = unknown> = {
   handler: (args: TArgs) => Promise<ToolResult>;
 };
 
-export type ToolDefinitionUnknown = ToolDefinition<unknown>;
-
 export type ToolConfig = {
   exaApiKey?: string;
 };

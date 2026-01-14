@@ -1,8 +1,9 @@
 import { z } from "zod";
 import axios from "axios";
 import { API_CONFIG } from "./config.js";
-import { DeepResearchCheckResponse, DeepResearchErrorResponse } from "../types.js";
+import { DeepResearchCheckResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
+import { getAxiosErrorInfo, logAxiosError } from "../utils/axiosError.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
 import type { DeepResearchCheckArgs } from "./toolArgs.js";
@@ -130,7 +131,6 @@ export const createDeepResearchCheckTool = (config?: ToolConfig): ToolDefinition
       if (axios.isAxiosError(error)) {
         // Handle specific 404 error for task not found
         if (error.response?.status === 404) {
-          const errorData = error.response.data as DeepResearchErrorResponse;
           logger.log(`Task not found: ${taskId}`);
           return {
             content: [{
@@ -145,16 +145,15 @@ export const createDeepResearchCheckTool = (config?: ToolConfig): ToolDefinition
             isError: true,
           };
         }
-        
-        // Handle other Axios errors
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-        
-        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
+      }
+
+      const axiosInfo = getAxiosErrorInfo(error);
+      if (axiosInfo) {
+        logAxiosError(logger, axiosInfo);
         return {
           content: [{
             type: "text" as const,
-            text: `Research check error (${statusCode}): ${errorMessage}`
+            text: `Research check error (${axiosInfo.statusCode}): ${axiosInfo.message}`
           }],
           isError: true,
         };

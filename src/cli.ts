@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { z } from "zod";
 import { createToolRegistry, getToolDefinition } from "./tools/registry.js";
-import type { ToolConfig } from "./tools/toolTypes.js";
+import type { ToolRegistryEntry } from "./tools/registry.js";
+import type { ToolConfig, ToolResult } from "./tools/toolTypes.js";
+import { defaultIo, formatError, printJson, resolveInput } from "./cli/io.js";
+import type { CliIO } from "./cli/io.js";
 
 type CliOptions = {
   input?: string;
@@ -22,36 +25,6 @@ Examples:
   exa-cli web_search_exa --input '{"query":"latest ai news"}'
   exa-cli get_code_context_exa --input '{"query":"React useState hook examples","tokensNum":5000}'
 `;
-
-type StdinLike = {
-  isTTY?: boolean;
-  size?: number;
-  setEncoding?: (encoding?: string) => unknown;
-  on?: (event: "data" | "end" | "error", cb: (chunk?: string) => void) => void;
-  text?: () => Promise<string>;
-  stream?: () => ReadableStream<Uint8Array>;
-};
-
-const readStdin = async (stdin: StdinLike): Promise<string> => {
-  if (typeof stdin.text === "function") {
-    return await stdin.text();
-  }
-  if (typeof stdin.stream === "function") {
-    return await new Response(stdin.stream()).text();
-  }
-  if (typeof stdin.on === "function") {
-    return await new Promise((resolve, reject) => {
-      let data = "";
-      stdin.setEncoding?.("utf8");
-      stdin.on?.("data", chunk => {
-        data += chunk ?? "";
-      });
-      stdin.on?.("end", () => resolve(data));
-      stdin.on?.("error", reject);
-    });
-  }
-  return "";
-};
 
 const parseArgs = (argv: string[]): { toolId?: string; options: CliOptions } => {
   const options: CliOptions = {};
@@ -94,65 +67,11 @@ const parseArgs = (argv: string[]): { toolId?: string; options: CliOptions } => 
   return { toolId, options };
 };
 
-const resolveInput = async (
-  options: CliOptions,
-  stdin: StdinLike
-): Promise<string | undefined> => {
-  if (options.inputFile) {
-    return await Bun.file(options.inputFile).text();
-  }
-  if (options.input?.startsWith("@")) {
-    const path = options.input.slice(1);
-    return await Bun.file(path).text();
-  }
-  if (options.input) {
-    return options.input;
-  }
-  const stdinIsTTY =
-    typeof stdin.isTTY === "boolean"
-      ? stdin.isTTY
-      : typeof stdin.size === "number"
-        ? !Number.isFinite(stdin.size)
-        : false;
-  if (!stdinIsTTY) {
-    const stdinData = await readStdin(stdin);
-    return stdinData.trim().length ? stdinData : undefined;
-  }
-  return undefined;
-};
-
-type StdoutLike = {
-  write: (chunk: string) => unknown;
-};
-
-const printJson = (payload: unknown, pretty: boolean | undefined, stdout: StdoutLike) => {
-  const json = pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload);
-  stdout.write(`${json}\n`);
-};
-
-const formatError = (message: string) => ({
-  content: [{ type: "text" as const, text: message }],
-  isError: true
-});
-
-type CliIO = {
-  stdin: StdinLike;
-  stdout: StdoutLike;
-  stderr: StdoutLike;
-};
-
-const defaultIo: CliIO = {
-  stdin: Bun.stdin,
-  stdout: {
-    write: chunk => {
-      void Bun.write(Bun.stdout, chunk);
-    }
-  },
-  stderr: {
-    write: chunk => {
-      void Bun.write(Bun.stderr, chunk);
-    }
-  }
+const runTool = async (tool: ToolRegistryEntry, raw: unknown) => {
+  const schema = z.object(tool.schema);
+  const args = schema.parse(raw);
+  const handler = tool.handler as (args: unknown) => Promise<ToolResult>;
+  return handler(args);
 };
 
 export const runCli = async (argv: string[] = Bun.argv.slice(2), io: CliIO = defaultIo) => {
@@ -191,9 +110,7 @@ export const runCli = async (argv: string[] = Bun.argv.slice(2), io: CliIO = def
 
   try {
     const parsed = JSON.parse(input);
-    const schema = z.object(tool.schema);
-    const args = schema.parse(parsed);
-    const result = await tool.handler(args);
+    const result = await runTool(tool, parsed);
     printJson(result, options.pretty, io.stdout);
     return result.isError ? 1 : 0;
   } catch (error) {

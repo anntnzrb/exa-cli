@@ -3,6 +3,7 @@ import axios from "axios";
 import { API_CONFIG } from "./config.js";
 import { ExaSearchRequest, ExaSearchResponse } from "../types.js";
 import { createRequestLogger } from "../utils/logger.js";
+import { getAxiosErrorInfo, logAxiosError } from "../utils/axiosError.js";
 import { checkpoint } from "agnost";
 import type { ToolConfig, ToolDefinition } from "./toolTypes.js";
 import type { DeepSearchArgs } from "./toolArgs.js";
@@ -94,23 +95,13 @@ export const createDeepSearchTool = (config?: ToolConfig): ToolDefinition<DeepSe
     } catch (error) {
       logger.error(error);
       
-      if (axios.isAxiosError(error)) {
-        // Handle Axios errors specifically
-        const statusCode = error.response?.status || 'unknown';
-        const errorMessage = error.response?.data?.message || error.message;
-        if (error.response?.data !== undefined) {
-          const responseBody =
-            typeof error.response.data === "string"
-              ? error.response.data
-              : JSON.stringify(error.response.data);
-          logger.log(`Response body: ${responseBody}`);
-        }
-        
-        logger.log(`Axios error (${statusCode}): ${errorMessage}`);
+      const axiosInfo = getAxiosErrorInfo(error);
+      if (axiosInfo) {
+        logAxiosError(logger, axiosInfo, { includeResponseBody: true });
         return {
           content: [{
             type: "text" as const,
-            text: `Deep search error (${statusCode}): ${errorMessage}`
+            text: `Deep search error (${axiosInfo.statusCode}): ${axiosInfo.message}`
           }],
           isError: true,
         };

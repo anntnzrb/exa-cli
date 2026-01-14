@@ -1,3 +1,4 @@
+/* c8 ignore file */
 export type WebSearchArgs = {
   query: string;
   numResults?: number;
