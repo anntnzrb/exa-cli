@@ -5,7 +5,7 @@ CLI for Exa web search, research, crawling, and code context tools.
 ## Install
 
 ```bash
-bun install -g exa-mcp-server
+bunx github:anntnzrb/exa-cli --list-tools
 # Or for local dev
 bun install
 ```

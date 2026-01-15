@@ -2,7 +2,7 @@
  * Simple logging utility for CLI tool
  */
 export const log = (message: string): void => {
-  console.error(`[EXA-MCP-DEBUG] ${message}`);
+  console.error(`[EXA-CLI-DEBUG] ${message}`);
 };
 
 export const createRequestLogger = (requestId: string, toolName: string) => {
